@@ -1,0 +1,64 @@
+-- Custos operacionais
+create table custos_operacionais (
+  id uuid default gen_random_uuid() primary key,
+  cliente_id uuid references clientes(id),
+  descricao text, valor numeric, data date,
+  categoria text, mes_referencia text,
+  editavel boolean default true,
+  inserido_por text default 'cliente',
+  criado_em timestamptz default now()
+);
+
+-- Execução do cliente
+create table execucao_cliente (
+  id uuid default gen_random_uuid() primary key,
+  cliente_id uuid references clientes(id),
+  etapa text, descricao text, status text default 'Em andamento',
+  url_arquivo text, criado_em timestamptz default now()
+);
+
+-- Diagnóstico (admin)
+create table diagnostico (
+  id uuid default gen_random_uuid() primary key,
+  cliente_id uuid references clientes(id),
+  conteudo text, url_arquivo text,
+  publicado boolean default false,
+  criado_em timestamptz default now()
+);
+
+-- Entregas
+create table entregas (
+  id uuid default gen_random_uuid() primary key,
+  cliente_id uuid references clientes(id),
+  titulo text, descricao text, url_arquivo text,
+  direcao text default 'admin_cliente',
+  prazo date, visualizado boolean default false,
+  visualizado_em timestamptz, status text default 'Pendente',
+  criado_em timestamptz default now()
+);
+
+-- Impressões de reunião (cliente)
+create table impressoes_reuniao (
+  id uuid default gen_random_uuid() primary key,
+  reuniao_id uuid references reunioes(id),
+  cliente_id uuid references clientes(id),
+  impressoes text, resumo_pos text,
+  criado_em timestamptz default now()
+);
+
+-- Aulas (cursos com YouTube)
+create table aulas (
+  id uuid default gen_random_uuid() primary key,
+  treino_id uuid references treinos(id),
+  modulo_id uuid references modulos(id),
+  titulo text, url_youtube text,
+  criado_em timestamptz default now()
+);
+
+-- Arquivos de aula
+create table aula_arquivos (
+  id uuid default gen_random_uuid() primary key,
+  aula_id uuid references aulas(id),
+  nome text, url text, tipo text,
+  criado_em timestamptz default now()
+);
