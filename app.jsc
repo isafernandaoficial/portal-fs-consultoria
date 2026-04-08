@@ -39,3 +39,4 @@ alter table servicos_cliente disable row level security;
 alter table materiais disable row level security;
 alter table processos disable row level security;
 alter table mentorias disable row level security;
+
