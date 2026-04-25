@@ -1,8 +1,10 @@
 import { useState, useEffect } from "react";
+import { hashSenha, verificarSenha } from "./passwordUtils.js";
 
 // ── SUPABASE CONFIG ─────────────────────────────────────────────────────────
-const SB_URL = "https://ioybontcswdbblfsuutr.supabase.co";
-const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlveWJvbnRjc3dkYmJsZnN1dXRyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUzNDU1ODAsImV4cCI6MjA5MDkyMTU4MH0.ife20ZzY8VlvtfZuVQCHIDksP8Byfwv_kP8-EsCjRGE";
+// Defina VITE_SB_URL e VITE_SB_KEY no arquivo .env (nunca commite esse arquivo)
+const SB_URL = import.meta.env.VITE_SB_URL;
+const SB_KEY  = import.meta.env.VITE_SB_KEY;
 
 const sb = async (path, opts = {}) => {
   const r = await fetch(`${SB_URL}/rest/v1/${path}`, {
@@ -21,8 +23,8 @@ const sb = async (path, opts = {}) => {
 };
 
 const db = {
-  get: (table, q = "") => sb(`${table}?${q}&order=criado_em.desc`),
-  getOne: (table, q) => sb(`${table}?${q}`).then(r => r[0] || null),
+  get: (table, q = "", limit = 500) => sb(`${table}?${q}&order=criado_em.desc&limit=${limit}`),
+  getOne: (table, q) => sb(`${table}?${q}&limit=1`).then(r => r[0] || null),
   insert: (table, data) => sb(table, { method: "POST", body: JSON.stringify(data) }),
   update: (table, id, data) => sb(`${table}?id=eq.${id}`, { method: "PATCH", body: JSON.stringify(data) }),
   del: (table, id) => sb(`${table}?id=eq.${id}`, { method: "DELETE" }),
@@ -108,6 +110,25 @@ const Carregando = ({msg="carregando..."}) => (
   </div>
 );
 
+// ── PLAYER DE VIDEOAULA (YouTube) ───────────────────────────────────────────
+// Aceita URL completa (youtu.be/..., watch?v=...) ou somente o ID de 11 chars.
+function VideoAula({ url }) {
+  if (!url) return null;
+  const id = url.match(/(?:youtu\.be\/|[?&]v=|\/embed\/)([A-Za-z0-9_-]{11})/)?.[1] || (url.length === 11 ? url : null);
+  if (!id) return <div style={{color:C.erro,fontSize:12,padding:8}}>URL do YouTube inválida.</div>;
+  return (
+    <div style={{borderRadius:14,overflow:"hidden",marginBottom:16,position:"relative",paddingTop:"56.25%"}}>
+      <iframe
+        src={`https://www.youtube-nocookie.com/embed/${id}?rel=0&modestbranding=1&color=white`}
+        style={{position:"absolute",top:0,left:0,width:"100%",height:"100%",border:"none"}}
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+        allowFullScreen
+        title="Videoaula"
+      />
+    </div>
+  );
+}
+
 // ── LOGIN ───────────────────────────────────────────────────────────────────
 function Login({onLogin}) {
   const [email,setEmail]=useState("");
@@ -146,7 +167,9 @@ function TelaTreinos({treinos,modulos,carregarModulos,clienteId,isAdmin,usuario,
   const [aberto,setAberto]=useState(null);
   const [modAberto,setModAberto]=useState(null);
   const [modalNovo,setModalNovo]=useState(false);
+  const [modalNovoMod,setModalNovoMod]=useState(false);
   const [form,setForm]=useState({nome:"",descricao:"",categoria:"Gestão",thumb:"🎓",cor:C.verdeM,cliente_id:clienteId||""});
+  const [formMod,setFormMod]=useState({titulo:"",descricao:"",duracao:"",video_youtube:""});
   const [salvando,setSalvando]=useState(false);
 
   const meus = isAdmin ? treinos : treinos.filter(t=>t.cliente_id===clienteId);
@@ -172,6 +195,16 @@ function TelaTreinos({treinos,modulos,carregarModulos,clienteId,isAdmin,usuario,
     setForm({nome:"",descricao:"",categoria:"Gestão",thumb:"🎓",cor:C.verdeM,cliente_id:clienteId||""});
   };
 
+  const salvarModulo = async () => {
+    if (!aberto) return;
+    setSalvando(true);
+    const num = modulos.filter(m=>m.treino_id===aberto.id).length + 1;
+    await db.insert("modulos", {...formMod, treino_id:aberto.id, cliente_id:aberto.cliente_id, num, feito:false, feito_em:null, nota:0, notas:""});
+    await carregarModulos();
+    setSalvando(false); setModalNovoMod(false);
+    setFormMod({titulo:"",descricao:"",duracao:"",video_youtube:""});
+  };
+
   if(modAberto) {
     const m = modAberto;
     return (
@@ -184,6 +217,7 @@ function TelaTreinos({treinos,modulos,carregarModulos,clienteId,isAdmin,usuario,
           <div style={{color:"rgba(255,255,255,0.6)",fontSize:12}}>⏱ {m.duracao}</div>
         </div>
         <div style={{padding:"20px 16px 100px"}}>
+          {m.video_youtube&&<VideoAula url={m.video_youtube}/>}
           <div style={{background:"rgba(255,255,255,0.05)",borderRadius:14,padding:16,marginBottom:16}}>
             <div style={{color:"rgba(255,255,255,0.5)",fontSize:11,marginBottom:8,textTransform:"uppercase",letterSpacing:1}}>Sobre este módulo</div>
             <div style={{color:"rgba(255,255,255,0.9)",fontSize:14,lineHeight:1.6}}>{m.descricao}</div>
@@ -221,7 +255,10 @@ function TelaTreinos({treinos,modulos,carregarModulos,clienteId,isAdmin,usuario,
           </div>
         </div>
         <div style={{padding:"8px 16px 100px"}}>
-          <div style={{color:"rgba(255,255,255,0.4)",fontSize:11,textTransform:"uppercase",letterSpacing:2,marginBottom:14}}>Módulos</div>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+            <div style={{color:"rgba(255,255,255,0.4)",fontSize:11,textTransform:"uppercase",letterSpacing:2}}>Módulos</div>
+            {isAdmin&&<button onClick={()=>setModalNovoMod(true)} style={{background:C.cobre,border:"none",borderRadius:20,padding:"5px 14px",color:C.verde,fontSize:11,cursor:"pointer"}}>+ Módulo</button>}
+          </div>
           {mods.map((m,i)=>(
             <div key={m.id} onClick={()=>setModAberto(m)} style={{display:"flex",gap:14,alignItems:"center",padding:"14px 0",borderBottom:"1px solid rgba(255,255,255,0.06)",cursor:"pointer"}}>
               <div style={{width:40,height:40,borderRadius:"50%",background:m.feito?`${C.cobre}33`:"rgba(255,255,255,0.08)",border:`2px solid ${m.feito?C.cobre:"rgba(255,255,255,0.15)"}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,color:m.feito?C.cobre:"rgba(255,255,255,0.5)",flexShrink:0}}>{m.feito?"✓":i+1}</div>
@@ -289,6 +326,16 @@ function TelaTreinos({treinos,modulos,carregarModulos,clienteId,isAdmin,usuario,
           <Sel label="Categoria" value={form.categoria} onChange={v=>setForm({...form,categoria:v})} options={["Gestão","Financeiro","Equipe","Marketing","Operacional","Outro"]}/>
           <Input label="Emoji de capa" value={form.thumb} onChange={v=>setForm({...form,thumb:v})} placeholder="Ex: 🏢"/>
           <Btn full onClick={salvarTreino} disabled={salvando}>{salvando?"Salvando...":"Criar Curso"}</Btn>
+        </Modal>
+      )}
+      {modalNovoMod&&(
+        <Modal titulo="Novo Módulo / Videoaula" onClose={()=>setModalNovoMod(false)}>
+          <Input label="Título" value={formMod.titulo} onChange={v=>setFormMod({...formMod,titulo:v})} placeholder="Ex: Aula 1 – Diagnóstico"/>
+          <Input label="Descrição" value={formMod.descricao} onChange={v=>setFormMod({...formMod,descricao:v})} multi placeholder="Sobre o que é esta aula?"/>
+          <Input label="Duração estimada" value={formMod.duracao} onChange={v=>setFormMod({...formMod,duracao:v})} placeholder="Ex: 45 min"/>
+          <Input label="Link da Videoaula (YouTube)" value={formMod.video_youtube} onChange={v=>setFormMod({...formMod,video_youtube:v})} placeholder="https://youtu.be/..." />
+          {formMod.video_youtube&&<VideoAula url={formMod.video_youtube}/>}
+          <Btn full onClick={salvarModulo} disabled={salvando||!formMod.titulo}>{salvando?"Salvando...":"Adicionar Módulo"}</Btn>
         </Modal>
       )}
     </div>
@@ -535,8 +582,9 @@ function AdminClientes({clientes,usuarios,carregar}) {
 
   const salvar = async () => {
     setSalvando(true);
+    const senhaHash = await hashSenha(form.senha || "mudar123");
     const c = await db.insert("clientes",{nome:form.nome,negocio:form.negocio,segmento:form.segmento,cidade:form.cidade,email:form.email,valor:Number(form.valor)||0,status:form.status,pagamento:form.pagamento,notas:form.notas,etapas:[false,false,false,false,false],cor:C.cobre});
-    await db.insert("usuarios",{nome:form.nome,email:form.email,senha:form.senha||"mudar123",tipo:"cliente",cliente_id:c[0]?.id,ativo:true});
+    await db.insert("usuarios",{nome:form.nome,email:form.email,senha:senhaHash,tipo:"cliente",cliente_id:c[0]?.id,ativo:true});
     await carregar.clientes(); await carregar.usuarios();
     setSalvando(false); setModal(false);
     setForm({nome:"",negocio:"",segmento:"",cidade:"",email:"",senha:"",valor:"",status:"Proposta Enviada",pagamento:"PIX",notas:""});
@@ -873,25 +921,42 @@ export default function App() {
       try {
         const sessao = localStorage.getItem("pv-sessao");
         if(sessao) {
-          const {email,senha} = JSON.parse(sessao);
-          const u = await db.getOne("usuarios",`email=eq.${encodeURIComponent(email)}&senha=eq.${encodeURIComponent(senha)}&ativo=eq.true`);
-          if(u) { setUsuario(u); await carregar.tudo(); setFase(u.tipo==="admin"?"admin":"cliente"); return; }
+          const { userId } = JSON.parse(sessao);
+          if(userId) {
+            const u = await db.getOne("usuarios",`id=eq.${encodeURIComponent(userId)}&ativo=eq.true`);
+            if(u) { setUsuario(u); await carregar.tudo(); setFase(u.tipo==="admin"?"admin":"cliente"); return; }
+          }
         }
-      } catch(e) { setErroGlobal("Erro ao conectar com o banco de dados."); }
+      } catch(e) { console.error("[sessao]", e); setErroGlobal("Erro ao conectar com o banco de dados."); }
       setFase("login");
     })();
   },[]);
 
-  const login = async (email,senha) => {
+  const login = async (email, senha) => {
     try {
-      const u = await db.getOne("usuarios",`email=eq.${encodeURIComponent(email)}&senha=eq.${encodeURIComponent(senha)}&ativo=eq.true`);
+      const u = await db.getOne("usuarios", `email=eq.${encodeURIComponent(email.trim())}&ativo=eq.true`);
       if(!u) return false;
-      localStorage.setItem("pv-sessao", JSON.stringify({email,senha}));
+
+      // Suporte a senhas legadas (plaintext) com auto-migração para hash
+      let senhaOk = false;
+      if(u.senha && u.senha.includes(":") && u.senha.length > 60) {
+        senhaOk = await verificarSenha(senha, u.senha);
+      } else {
+        senhaOk = u.senha === senha;
+        if(senhaOk) {
+          const novoHash = await hashSenha(senha);
+          await db.update("usuarios", u.id, { senha: novoHash });
+        }
+      }
+      if(!senhaOk) return false;
+
+      // Armazena apenas o ID — nunca a senha
+      localStorage.setItem("pv-sessao", JSON.stringify({ userId: u.id }));
       setUsuario(u);
       await carregar.tudo();
       setFase(u.tipo==="admin"?"admin":"cliente");
       return true;
-    } catch { return false; }
+    } catch(e) { console.error("[login]", e); return false; }
   };
 
   const logout = () => { localStorage.removeItem("pv-sessao"); setUsuario(null); setFase("login"); };
